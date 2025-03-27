@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en" class="bg-gray-900 text-gray-100">
+<head>
+  <meta charset="UTF-8">
+  <title>{{ title }} Stats</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+  <style>
+    .hidden { display: none; }
+    .timeline { margin-top: 30px; }
+  </style>
+</head>
+<body class="p-4 max-w-3xl mx-auto space-y-10">
+  <h1 class="text-3xl font-bold">{{ title }} — Weekly Stats</h1>
+
+  <!-- Weekly Bar Chart -->
+  <canvas id="barChart"></canvas>
+  <script>
+    new Chart(document.getElementById('barChart'), {
+      type: 'bar',
+      data: {
+        labels: {{ play_counts.keys()|list|tojson }},
+        datasets: [{
+          label: 'Total Plays',
+          data: {{ play_counts.values()|list|tojson }},
+          backgroundColor: 'rgba(59,130,246,0.6)',
+          borderColor: 'rgba(59,130,246,1)',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        plugins: {
+          legend: { display: false },
+          datalabels: {
+            color: '#fff',
+            anchor: 'end',
+            align: 'top',
+            font: {
+              weight: 'bold',
+              size: 14
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: { font: { size: 14, weight: 'bold' } }
+          },
+          y: {
+            beginAtZero: true,
+            ticks: { stepSize: 1, font: { size: 14, weight: 'bold' } }
+          }
+        }
+      },
+      plugins: [ChartDataLabels]
+    });
+  </script>
+
+  <!-- Day Selector -->
+  <div>
+    <h2 class="text-2xl font-semibold mb-3">📅 View by time of day</h2>
+    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      {% for day in times_by_day %}
+        <a href="#{{ day }}" onclick="showDay('{{ day }}')" class="text-blue-400 hover:underline">{{ day }}</a>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Per-Day 15-Minute Breakdown -->
+  {% for day, times in times_by_day.items() %}
+    <div id="{{ day }}" class="timeline hidden">
+      <h3 class="text-xl font-medium mb-2">{{ day }} — 15 Minute Breakdown</h3>
+      <canvas id="hourly_{{ day }}"></canvas>
+      <script>
+        const times_{{ day }} = {{ times|tojson }};
+        const binCounts_{{ day }} = Array(96).fill(0);
+
+        times_{{ day }}.forEach(t => {
+          const [h, m] = t.split(':').map(Number);
+          const index = h * 4 + Math.floor(m / 15);
+          binCounts_{{ day }}[index]++;
+        });
+
+        const labels_{{ day }} = Array.from({length: 96}, (_, i) => {
+          const hour = Math.floor(i / 4).toString().padStart(2, '0');
+          const minute = (i % 4) * 15;
+          return `${hour}:${minute.toString().padStart(2, '0')}`;
+        });
+
+        const renderBarChart_{{ day }} = () => {
+          new Chart(document.getElementById('hourly_{{ day }}'), {
+            type: 'bar',
+            data: {
+              labels: labels_{{ day }},
+              datasets: [{
+                label: 'Play Count',
+                data: binCounts_{{ day }},
+                backgroundColor: 'rgba(34,197,94,0.7)',
+                borderColor: 'rgba(34,197,94,1)',
+                borderWidth: 1
+              }]
+            },
+            options: {
+              plugins: {
+                legend: { display: false },
+                datalabels: {
+                  anchor: 'end',
+                  align: 'top',
+                  color: '#fff',
+                  font: { size: 12, weight: 'bold' },
+                  formatter: (val) => val > 0 ? val : ''
+                }
+              },
+              scales: {
+                x: {
+                  ticks: {
+                    maxRotation: 90,
+                    minRotation: 45,
+                    autoSkip: true,
+                    font: { size: 12 }
+                  }
+                },
+                y: {
+                  beginAtZero: true,
+                  ticks: { stepSize: 1, font: { size: 12 } }
+                }
+              }
+            },
+            plugins: [ChartDataLabels]
+          });
+        };
+        window['renderBarChart_{{ day }}'] = renderBarChart_{{ day }};
+      </script>
+    </div>
+  {% endfor %}
+
+  <script>
+    function showDay(dayId) {
+      document.querySelectorAll('.timeline').forEach(el => el.style.display = 'none');
+      const target = document.getElementById(dayId);
+      if (target) {
+        target.style.display = 'block';
+        const renderFn = window['renderBarChart_' + dayId];
+        if (typeof renderFn === 'function') renderFn();
+        location.hash = '#' + dayId;
+      }
+    }
+
+    window.onload = () => {
+      const hash = location.hash.substring(1);
+      const available = {{ times_by_day|tojson }};
+      const fallback = Object.keys(available).find(d => available[d].length > 0);
+      if (hash && available[hash]?.length) {
+        showDay(hash);
+      } else if (fallback) {
+        showDay(fallback);
+      }
+    };
+  </script>
+
+  <a href="{{ url_for('songs') }}" class="text-blue-500 hover:underline block mt-4">⬅ Back to songs</a>
+</body>
+</html>
